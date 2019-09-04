@@ -1,0 +1,312 @@
+function [Cost] = CircuitModel_CostFun_ZZ(params,animal,ContextModulation,nUnit)
+%--------------------------------------------------------------------------
+%      Total cost function for 3-Neuron Circuit Model (v1.0.3).
+%--------------------------------------------------------------------------
+%
+%   This cost function should be minimized during parameter optimization.
+%   Recommended minimization function is a Bayesian Adaptive Direct Search
+%   (BADS �, Acerbi and Ma, 2017) || https://github.com/lacerbi/bads
+%
+%   This cost function is a corse-grain version of the model introduced
+%   by Kuchibhotla & Hindmarsh Sten (2017) to account for context-dependent
+%   learning trajectories.
+%
+%   Behavioral datafiles ('individual_behavior.mat' ||
+%   'average_behavior.mat') must be added to the Matlab path before function
+%   can be run.
+%
+%   The corse-grain version approximates the behavior of the fully
+%   stochastic model to allow for rapid optimization of parameters.
+%   Ergodic approximation allows us to update weights 10 trials at a time,
+%   and subsequently calculate the probability of hit and false alarms.
+%   The probability is taken to be the actual rate resulting from the given
+%   parameters.
+%
+%   Updates to each synapse are made in 10 trial increments according to:
+%      Delta_Synapse = alpha*Synapse(Reward - kappa^-1(EXC-INH)*10*P(GO|Exc,Inh)
+%
+%   Input vector 'params' contains the 9 parameters for the model, and
+%   should be ordered as follows: 
+%      
+%       params = [alpha alpha_NR sigma kappa WI WE WI_S WE_S Context(c)]
+%
+%
+%   possible models are as follows, and should be inserted under 'ContextModulation'.
+%
+%    'excitatory'
+%    'inhibitory'
+%    'threshold'
+%    'gain'
+%
+%   possible animals:
+%
+%    'average'
+%    'kkjm202'
+%    'kkjm203'
+%    'kkjm204'
+%    'kkjscam015'
+%    'kkpv10'
+%    'kkpv11'
+%    'kkpv13'
+
+%--------------------------------------------------------------------------
+%   Paper: Expression of task-knowledge during learning is context-dependent
+%   Author: Tom Hindmarsh Sten, 2017
+%   e-mail: hindmarsh.sten@nyu.edu
+%   Release date: XXX
+%   Version: 1.0.3
+%   Code repository: http://froemkelab.med.nyu.edu/
+%--------------------------------------------------------------------------
+
+%% Retrieve parameters from input vector (params)
+
+alpha = params(1);                               %   learning rates
+alpha_NR = params(2);
+sig = params(3);                                 %   noise        
+kappa = params (4);                              %   asymptote
+%W_I = [params(7) params(5) params(5) ];         %   initital weights [S    S+    S-]
+%W_E = [params(8) params(6) params(6) ];
+c = params(9);                                   %   inhibitory scaling parameter
+
+%% Non-Varying parameters
+
+%reward magnitude
+reward = 1;
+
+%ratio of target-foil stimuli
+TF_ratio = 0.5;
+
+%set the courseness of the model (trials/update)
+courseness = 10; 
+
+%% Load and prepare behavioral data
+
+switch animal
+    
+    case 'average'
+        
+        load average_behavior_v2
+        
+        %assign hit rates and smooth trajectory
+        reinforcedhit = smooth(reinforced(:,2),5); probehit = smooth(probe(:,2),3);
+        
+        %assign false alarm rates and smooth trajectory
+        reinforcedfa = smooth(reinforced(:,3),5); probefa = smooth(probe(:,3),3);
+        
+        %retrieve the trial blocks during which behavior was recorded.
+        reinforcedX = reinforced(:,1)*100; probeX = probe(:,1);
+        
+    otherwise
+        
+        load individual_behavior_v2.mat;
+        
+        %retreieve data for both contexts for the given animal
+        reinforced = individual_behavior.(animal).reinforced;
+        probe = individual_behavior.(animal).probe;
+        
+        %assign hit rates and smooth trajectory
+        reinforcedhit = smooth(reinforced(:,2),5); probehit = smooth(probe(:,2),3);
+        
+        %assign false alarm rates and smooth trajectory
+        reinforcedfa = smooth(reinforced(:,3),5); probefa = smooth(probe(:,3),3);
+        
+        %retrieve the trial blocks during which behavior was recorded.
+        reinforcedX = reinforced(:,1)*100; probeX = probe(:,1);
+
+end
+
+
+% Interpolate probe behavior; assume expert performance after extinction
+% occurs
+
+nI = setdiff([1:max(probeX)],probeX);
+y = interp1(probeX,probefa,nI);
+y2 = interp1(probeX,probehit,nI);
+
+probefa(probeX) = probefa;
+probefa(nI) = y;
+probefa(end:max(reinforcedX./100)) = 0;
+probefa(isnan(probefa)) = [];
+
+probehit(probeX) = probehit;
+probehit(nI) = y2;
+probehit(end:max(reinforcedX./100)) = 1;
+probehit(isnan(probehit)) = [];
+
+%updated trial ID's after interpolation
+probeX = min(probeX):max(reinforcedX./100);
+
+%% Run model; 
+
+ctr = 1;
+targetInput = randn(nUnit,1);
+foilInput = randn(nUnit,1);
+commonInput = randn(nUnit,1);
+[Q,R] = qr([targetInput, foilInput, commonInput]);
+targetAct = Q(:,1) + Q(:,3);
+foilAct = Q(:,2) + Q(:,3);
+
+%Q = [-1 0 0; 0 -1 0; 0 0 1];
+%targetAct = [-1; 0; 1];
+%foilAct = [0; -1 ; 1];
+
+%targetAct = targetInput + commonInput;
+%foilAct = foilInput + commonInput;
+%Q = [targetInput, foilInput, commonInput];
+
+W_I = (params(6) * Q(:,1) + params(6)* Q(:,2) + Q(:,3) * params(8))' ;         %   initital weights [S    S+    S-]
+W_E = (params(5) * Q(:,1) + params(5)* Q(:,2) + Q(:,3) * params(7))' ;
+for session = 1:courseness:max(reinforcedX)
+    
+    %get target-foil ratio
+    T = TF_ratio;
+    F = 1-TF_ratio;
+    
+    targetE = W_E * targetAct;
+    targetI = W_I * targetAct;
+    foilE = W_E * foilAct;
+    foilI = W_I * foilAct;
+
+    %%Calculate probability of GO response | W,x
+    switch ContextModulation
+        
+        case 'inhibitory'
+            
+            %reinforced probability of licking, Target tone
+            prob_lick = (1 + exp(-(targetE - c*targetI)./sig)).^(-1);
+            reinforcedHit_Model(ctr) = prob_lick;
+            
+            %reinforced probability of licking, Foil tone
+            prob_lick = (1 + exp(-(foilE - c*foilI)./sig)).^(-1);
+            reinforcedFA_Model(ctr) = prob_lick;
+            
+            
+        case 'excitatory'
+            
+            %reinforced probability of licking, Target tone
+            prob_lick = (1 + exp(-(c*targetE - targetI)./sig)).^(-1);
+            reinforcedHit_Model(ctr) = prob_lick;
+            
+            %reinforced probability of licking, Foil tone
+            prob_lick = (1 + exp(-(c*foilE - foilI)./sig)).^(-1);
+            reinforcedFA_Model(ctr) = prob_lick;
+            
+            
+        case 'threshold'
+            
+            %reinforced probability of licking, Target tone
+            prob_lick = (1 + exp(-(targetE - targetI + c)./sig)).^(-1);
+            reinforcedHit_Model(ctr) = prob_lick;
+            
+            %reinforced probability of licking, Foil tone
+            prob_lick = (1 + exp(-(foilE - foilI + c)./sig)).^(-1);
+            reinforcedFA_Model(ctr) = prob_lick;
+            
+            
+        case 'gain'
+            %reinforced probability of licking, Target tone
+            prob_lick = (1 + exp(- c * (targetE - targetI)./sig)).^(-1);
+            reinforcedHit_Model(ctr) = prob_lick;
+            
+            %reinforced probability of licking, Foil tone
+            prob_lick = (1 + exp(- c * (foilE - foilI)./sig)).^(-1);
+            reinforcedFA_Model(ctr) = prob_lick;        
+            
+        otherwise
+            
+            disp({upper(ContextModulation),' is NOT a valid context switch'})
+            error('Please use a valid assignment for context switch');
+    end
+    
+    %probe probability of licking, Target Tone
+    prob_lick = (1 + exp(-(targetE - targetI)./sig)).^(-1);
+    probeHit_Model(ctr) = prob_lick;
+    
+    %probe probability of licking, Foil Tone
+    prob_lick = (1 + exp(-(foilE - foilI)./sig)).^(-1);
+    probeFA_Model(ctr) = prob_lick;
+
+%% Update synaptic weights for the XX previous trials
+ 
+    
+    W_E = W_E + sign(W_E) .* alpha .*( W_E .*targetAct')*(reward - kappa^(-1) * (targetE - targetI) ) * (T*courseness*reinforcedHit_Model(ctr));
+    W_I = W_I - sign(W_I) .* alpha .*( W_I .*targetAct')*(reward - kappa^(-1) * (targetE - targetI) ) * (T*courseness*reinforcedHit_Model(ctr));
+
+    W_E = W_E + sign(W_E) .*alpha_NR .*( W_E .*foilAct')*(-reward - kappa^(-1) * (foilE - foilI) ) * (F*courseness*reinforcedFA_Model(ctr));
+    W_I = W_I - sign(W_I) .*alpha_NR .*( W_I .*foilAct')*(-reward - kappa^(-1) * (foilE - foilI) ) * (F*courseness*reinforcedFA_Model(ctr));
+    
+    %Update S+ synaptic weights
+
+    %alpha_mult = alpha*W_I(2);
+    %W_I(2) = W_I(2) - alpha_mult*(reward - kappa^-1*(W_E(1)-W_I(1)+W_E(2) - W_I(2)))*(T*courseness*reinforcedHit_Model(ctr));
+    
+    %alpha_mult = alpha*W_E(2);
+    %W_E(2) = W_E(2) + alpha_mult*(reward - kappa^-1*(W_E(1)-W_I(1)+W_E(2) - W_I(2)))*(T*courseness*reinforcedHit_Model(ctr));
+    
+    %Update S- synaptic weights
+    %alpha_mult = alpha_NR*W_I(3);
+    %W_I(3) = W_I(3) - alpha_mult*(-reward - kappa^-1*(W_E(1)-W_I(1)+W_E(3) - W_I(3)))*(F*courseness*reinforcedFA_Model(ctr));
+    
+    %alpha_mult = alpha_NR*W_E(3);
+    %W_E(3) = W_E(3) + alpha_mult*(-reward - kappa^-1*(W_E(1)-W_I(1)+W_E(3) - W_I(3)))*(F*courseness*reinforcedFA_Model(ctr));
+    
+    %Update Port synaptic weights // EXC and INH for TARGET and FOIL
+    %alpha_mult = alpha*W_I(1);
+    %W_I(1) = W_I(1) - alpha_mult*(reward - kappa^-1*(W_E(1)-W_I(1)+W_E(2) - W_I(2)))*(T*courseness*reinforcedHit_Model(ctr));
+    
+    %alpha_mult = alpha*W_E(1);
+    %W_E(1) = W_E(1) + alpha_mult*(reward - kappa^-1*(W_E(1)-W_I(1)+W_E(2) - W_I(2)))*(T*courseness*reinforcedHit_Model(ctr));
+    
+    %alpha_mult = alpha_NR*W_I(1);
+    %W_I(1) = W_I(1) - alpha_mult*(-reward - kappa^-1*(W_E(1)-W_I(1)+W_E(3) - W_I(3)))*(F*courseness*reinforcedFA_Model(ctr));
+    
+    %alpha_mult = alpha_NR*W_E(1);
+    %W_E(1) = W_E(1) + alpha_mult*(-reward - kappa^-1*(W_E(1)-W_I(1)+W_E(3) - W_I(3)))*(F*courseness*reinforcedFA_Model(ctr));
+    
+    
+    ctr = ctr+1;
+end
+
+%% Convert to trialblocks of 100; average over smaller trialblocks. 
+reinforcedX = reinforcedX./courseness;
+for ths = 1:length(reinforcedX);
+    
+    %first block recorded should be the same as in the behavioral data
+    %(usually start trial ~300-500). 
+    if ths == 1; 
+        reinforcedFA_modmean(ths) = mean(reinforcedFA_Model(1:reinforcedX(ths)));
+        reinforcedHit_modmean(ths) = mean(reinforcedHit_Model(1:reinforcedX(ths)));
+        probeFA_modmean(ths) = mean(probeFA_Model(1:reinforcedX(ths)));
+        probeHit_modmean(ths) = mean(probeHit_Model(1:reinforcedX(ths)));
+    
+    %index the last trial block (100 trials). Added to ease indexing.
+    elseif ths == length(reinforcedX);
+        reinforcedFA_modmean(ths) = mean(reinforcedFA_Model(reinforcedX(ths-1):end));
+        reinforcedHit_modmean(ths) = mean(reinforcedHit_Model(reinforcedX(ths-1):end));
+        probeFA_modmean(ths) = mean(probeFA_Model(reinforcedX(ths-1):end));
+        probeHit_modmean(ths) = mean(probeHit_Model(reinforcedX(ths-1):end));
+    
+    %average over the 10 trial blocks of 10 trials each in the middle. 
+    else
+        reinforcedFA_modmean(ths) = mean(reinforcedFA_Model(reinforcedX(ths-1):reinforcedX(ths)));
+        reinforcedHit_modmean(ths) = mean(reinforcedHit_Model(reinforcedX(ths-1):reinforcedX(ths)));
+        probeFA_modmean(ths) = mean(probeFA_Model(reinforcedX(ths-1):reinforcedX(ths)));
+        probeHit_modmean(ths) = mean(probeHit_Model(reinforcedX(ths-1):reinforcedX(ths)));
+    end
+end
+
+%% Calculate the cost function across contexts.
+FirstReinforcedBlock = reinforcedX(1)./courseness;
+CorrectedProbeIndex = probeX+1-FirstReinforcedBlock;
+
+CP = sqrt(nanmean(((probeFA_modmean(CorrectedProbeIndex) - probefa').^2) + ((probeHit_modmean(CorrectedProbeIndex) - probehit').^2)));
+CR = sqrt(nanmean(((reinforcedFA_modmean - reinforcedfa').^2) + ((reinforcedHit_modmean-reinforcedhit').^2)));
+
+%global cost function
+Cost = sum(CP+CR);
+if isnan(Cost)
+    Cost = 1000;
+end
+
+end
+
