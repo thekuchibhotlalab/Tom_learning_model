@@ -157,8 +157,8 @@ foilAct = Q(:,2) + Q(:,3);
 W_I = (params(6) * Q(:,1) + params(6)* Q(:,2) + Q(:,3) * params(8))' ;         %   initital weights [S    S+    S-]
 W_E = (params(5) * Q(:,1) + params(5)* Q(:,2) + Q(:,3) * params(7))' ;
 for session = 1:courseness:max(reinforcedX)
-    targetAct = Q(:,1) + Q(:,3) + randn(nUnit,1)* 0.003;
-    foilAct = Q(:,2) + Q(:,3) + randn(nUnit,1)* 0.003;
+    targetAct = Q(:,1) + Q(:,3) + randn(nUnit)* 0.003;
+    foilAct = Q(:,2) + Q(:,3) + randn(nUnit)* 0.003;
     
     
     %get target-foil ratio

@@ -312,10 +312,8 @@ for j = 1:nloops;
         WE3(:,ctr,j) = Q(:,1:3)' * W_E';
         WI3(:,ctr,j) = Q(:,1:3)' * W_I';
         
-        targEStore(ctr,j) = targetE;
-        foilEStore(ctr,j) = foilE;
-        targIStore(ctr,j) = targetI;
-        foilIStore(ctr,j) = foilI;
+        targEStore(:,ctr,j) = targetE;
+        foilEStore(:,ctr,j) = foilE;
         
         WESTORE(:,ctr,j) = W_E;
         WISTORE(:,ctr,j) = W_I;
