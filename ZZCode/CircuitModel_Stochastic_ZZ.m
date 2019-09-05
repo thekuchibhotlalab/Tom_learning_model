@@ -198,10 +198,10 @@ for j = 1:nloops;
             
             if tone == 1;
                 %x = [1 1 0]; %[s s+ s-], which neuron is activated
-                x = targetAct' + randn(1,nUnit)* 0.003;
+                x = targetAct'; %+ randn(1,nUnit)* 0.003;
             else
                 %x = [1 0 1];
-                x = foilAct' + randn(1,nUnit) * 0.003;
+                x = foilAct'; %+ randn(1,nUnit) * 0.003;
             end
             
             %get random number between zero and 1 with uniform probability;
@@ -209,12 +209,21 @@ for j = 1:nloops;
             
             switch ContextModulation
                 
+                case 'inhibitoryCtx'
+                    
+                    [Q_EI,R_EI] = qr([W_E; W_I]');
+                    WI_Comp = W_I - Q_EI(:,1)' * R_EI(1,2);
+                    
+                    inhibScale = (1-c) *W_I*x' ./ (WI_Comp * W_I');
+                    x_mod = x - inhibScale * WI_Comp;
+                    %probability of licking in the reinforced context
+                    prob_lick = (1 + exp(-(W_E*x_mod' - W_I*x_mod')./sig)).^(-1);
+
+                
                 case 'inhibitory'
                     
                     %probability of licking in the reinforced context
                     prob_lick = (1 + exp(-(W_E*x' - c*W_I*x')./sig)).^(-1);
-                    WE3(:,ctr,j) = Q(:,1:3)' * W_E';
-                    WI3(:,ctr,j) = Q(:,1:3)' * W_I';
                     
                 case 'excitatory'
                     
@@ -517,5 +526,7 @@ varargout{5} = WESTORE;
 varargout{6} = WISTORE;
 varargout{7} = {WE3,WI3};
 varargout{8} = {allTargetAct,allFoilAct,allInput};
+varargout{9} = {targEStore,foilEStore,targIStore,foilIStore};
+
 end
 
