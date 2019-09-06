@@ -172,11 +172,11 @@ for session = 1:courseness:max(reinforcedX)
         case 'foilActivity'
             
             %reinforced probability of licking, Target tone
-            prob_lick = (1 + exp(-(targetE - c*targetI)./sig)).^(-1);
+            prob_lick = (1 + exp(-(targetE - targetI)./sig)).^(-1);
             reinforcedHit_Model(ctr) = prob_lick;
             
             %reinforced probability of licking, Foil tone
-            prob_lick = (1 + exp(-(foilE - c*foilI)./sig)).^(-1);
+            prob_lick = (1 + exp(-(foilE - foilI)./sig)).^(-1);
             reinforcedFA_Model(ctr) = prob_lick;
         
         
@@ -230,11 +230,11 @@ for session = 1:courseness:max(reinforcedX)
     end
     
     %probe probability of licking, Target Tone
-    prob_lick = (1 + exp(-(targetE - targetI)./sig)).^(-1);
+    prob_lick = (1 + exp(-(targetE - c*targetI)./sig)).^(-1);
     probeHit_Model(ctr) = prob_lick;
     
     %probe probability of licking, Foil Tone
-    prob_lick = (1 + exp(-(foilE - foilI)./sig)).^(-1);
+    prob_lick = (1 + exp(-(foilE - c*foilI)./sig)).^(-1);
     probeFA_Model(ctr) = prob_lick;
 
 %% Update synaptic weights for the XX previous trials

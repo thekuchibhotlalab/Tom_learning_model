@@ -216,6 +216,7 @@ for j = 1:nloops;
                     
                     inhibScale = (1-c) *W_I*x' ./ (WI_Comp * W_I');
                     x_mod = x - inhibScale * WI_Comp;
+                    
                     %probability of licking in the reinforced context
                     prob_lick = (1 + exp(-(W_E*x_mod' - W_I*x_mod')./sig)).^(-1);
 
@@ -315,7 +316,25 @@ for j = 1:nloops;
             
         end;
         
-        
+        switch ContextModulation % save the activation and 
+                
+            case 'inhibitoryCtx'
+                
+                [Q_EI,R_EI] = qr([W_E; W_I]');
+                WI_Comp = W_I - Q_EI(:,1)' * R_EI(1,2);
+                modStore(:,ctr,j) = WI_Comp;
+
+                targInhibScale = (1-c) *W_I* targetAct ./ (WI_Comp * W_I');
+                foilInhibScale = (1-c) *W_I* foilAct ./ (WI_Comp * W_I');
+                targInhibScaleStore(ctr,j) = targInhibScale;
+                foilInhibScaleStore(ctr,j) = foilInhibScale;
+                                
+                reinfTargStore(:,ctr,j) = targetAct - targInhibScale * WI_Comp';
+                probeTargStore(:,ctr,j) = targetAct;
+                reinfFoilStore(:,ctr,j) = foilAct - foilInhibScale * WI_Comp';
+                probeFoilStore(:,ctr,j) = foilAct;
+                
+        end
         %store the synaptic weights from each training block
         
         WE3(:,ctr,j) = Q(:,1:3)' * W_E';
@@ -527,6 +546,13 @@ varargout{6} = WISTORE;
 varargout{7} = {WE3,WI3};
 varargout{8} = {allTargetAct,allFoilAct,allInput};
 varargout{9} = {targEStore,foilEStore,targIStore,foilIStore};
+
+switch ContextModulation
+                
+    case 'inhibitoryCtx'
+        varargout{10} = {modStore, targInhibScaleStore,foilInhibScaleStore,...
+            reinfTargStore, probeTargStore, reinfFoilStore, probeFoilStore};
+end
 
 end
 

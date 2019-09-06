@@ -1,4 +1,4 @@
-function varargout = CircuitModel_Stochastic_ZZ(params,nUnit,animal,ContextModulation,visualization,nloops);
+function varargout = CircuitModel_Stochastic_ZZ_reverse(params,nUnit,animal,ContextModulation,visualization,nloops);
 %--------------------------------------------------------------------------
 %           Stochastic 3-Neuron Circuit Model (v1.0.2).
 %--------------------------------------------------------------------------
@@ -210,23 +210,22 @@ for j = 1:nloops;
             switch ContextModulation
                 
                 case 'inhibitoryCtx'
+                    prob_lick = (1 + exp(-(W_E*x' - W_I*x')./sig)).^(-1);
                     
-                    [Q_EI,R_EI] = qr([W_E; W_I]');
-                    WI_Comp = W_I - Q_EI(:,1)' * R_EI(1,2);
-                    
-                    inhibScale = 
-                    tempX = x - (1-c) *W_I*x' ./ (WI_Comp * W_I') * WI_Comp;
-                    %probability of licking in the reinforced context
-                    prob_lick = (1 + exp(-(W_E*x' - c*W_I*x')./sig)).^(-1);
-                    WE3(:,ctr,j) = Q(:,1:3)' * W_E';
-                    WI3(:,ctr,j) = Q(:,1:3)' * W_I';
+%                     [Q_EI,R_EI] = qr([W_E; W_I]');
+%                     WI_Comp = W_I - Q_EI(:,1)' * R_EI(1,2);
+%                     
+%                     inhibScale = (1-c) *W_I*x' ./ (WI_Comp * W_I');
+%                     x_mod = x - inhibScale * WI_Comp;
+%                     
+%                     %probability of licking in the reinforced context
+%                     prob_lick = (1 + exp(-(W_E*x_mod' - W_I*x_mod')./sig)).^(-1);
+
                 
                 case 'inhibitory'
                     
                     %probability of licking in the reinforced context
                     prob_lick = (1 + exp(-(W_E*x' - c*W_I*x')./sig)).^(-1);
-                    WE3(:,ctr,j) = Q(:,1:3)' * W_E';
-                    WI3(:,ctr,j) = Q(:,1:3)' * W_I';
                     
                 case 'excitatory'
                     
@@ -318,7 +317,34 @@ for j = 1:nloops;
             
         end;
         
-        
+        switch ContextModulation % save the activation and 
+                
+            case 'inhibitoryCtx'
+                
+                %[Q_EI,R_EI] = qr([W_E; W_I]');
+                %WI_Comp = W_I - Q_EI(:,1)' * R_EI(1,2);
+
+                %inhibScale = (1-c) *W_I*x' ./ (WI_Comp * W_I');
+                %x_mod = x - inhibScale * WI_Comp;
+
+                %probability of licking in the reinforced context
+                %prob_lick = (1 + exp(-(W_E*x_mod' - W_I*x_mod')./sig)).^(-1);
+                
+                [Q_EI,R_EI] = qr([W_E; W_I]');
+                WI_Comp = W_I - Q_EI(:,1)' * R_EI(1,2);
+                modStore(:,ctr,j) = WI_Comp;
+
+                targInhibScale = (1-c) *W_I* targetAct ./ (WI_Comp * W_I');
+                foilInhibScale = (1-c) *W_I* foilAct ./ (WI_Comp * W_I');
+                targInhibScaleStore(ctr,j) = targInhibScale;
+                foilInhibScaleStore(ctr,j) = foilInhibScale;
+                                
+                probeTargStore(:,ctr,j) = targetAct - targInhibScale * WI_Comp';
+                reinfTargStore(:,ctr,j) = targetAct;
+                probeFoilStore(:,ctr,j) = foilAct - foilInhibScale * WI_Comp';
+                reinfFoilStore(:,ctr,j) = foilAct;
+                
+        end
         %store the synaptic weights from each training block
         
         WE3(:,ctr,j) = Q(:,1:3)' * W_E';
@@ -356,7 +382,14 @@ for j = 1:nloops;
                 
                 %get random number between zero and 1 with uniform probability;
                 p = rand(1);
-                prob_lick = (1 + exp(-(W_E*x' - W_I*x')./sig)).^(-1);
+                
+                [Q_EI,R_EI] = qr([W_E; W_I]');
+                WI_Comp = W_I - Q_EI(:,1)' * R_EI(1,2);
+
+                inhibScale = (1-c) *W_I*x' ./ (WI_Comp * W_I');
+                x_mod = x - inhibScale * WI_Comp;
+                prob_lick = (1 + exp(-(W_E*x_mod' - W_I*x_mod')./sig)).^(-1);
+                %prob_lick = (1 + exp(-(W_E*x' - c * W_I*x')./sig)).^(-1);
                 
                 if p < prob_lick;
                     y = 1; %Go
@@ -530,6 +563,13 @@ varargout{6} = WISTORE;
 varargout{7} = {WE3,WI3};
 varargout{8} = {allTargetAct,allFoilAct,allInput};
 varargout{9} = {targEStore,foilEStore,targIStore,foilIStore};
+
+switch ContextModulation
+                
+    case 'inhibitoryCtx'
+        varargout{10} = {modStore, targInhibScaleStore,foilInhibScaleStore,...
+            reinfTargStore, probeTargStore, reinfFoilStore, probeFoilStore};
+end
 
 end
 

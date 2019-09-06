@@ -1,4 +1,4 @@
-function [Cost] = CircuitModel_CostFun_ZZ(params,animal,ContextModulation,nUnit)
+function [Cost] = CircuitModel_CostFun_ZZ_reverse(params,animal,ContextModulation,nUnit)
 %--------------------------------------------------------------------------
 %      Total cost function for 3-Neuron Circuit Model (v1.0.3).
 %--------------------------------------------------------------------------
@@ -157,8 +157,8 @@ foilAct = Q(:,2) + Q(:,3);
 W_I = (params(6) * Q(:,1) + params(6)* Q(:,2) + Q(:,3) * params(8))' ;         %   initital weights [S    S+    S-]
 W_E = (params(5) * Q(:,1) + params(5)* Q(:,2) + Q(:,3) * params(7))' ;
 for session = 1:courseness:max(reinforcedX)
-    targetAct = Q(:,1) + Q(:,3) + randn(nUnit)* 0.003;
-    foilAct = Q(:,2) + Q(:,3) + randn(nUnit)* 0.003;
+    targetAct = Q(:,1) + Q(:,3); %+ randn(nUnit,1)* 0.003;
+    foilAct = Q(:,2) + Q(:,3); %+ randn(nUnit,1)* 0.003;
     
     
     %get target-foil ratio
@@ -176,11 +176,11 @@ for session = 1:courseness:max(reinforcedX)
         case 'inhibitory'
             
             %reinforced probability of licking, Target tone
-            prob_lick = (1 + exp(-(targetE - c*targetI)./sig)).^(-1);
+            prob_lick = (1 + exp(-(targetE - targetI)./sig)).^(-1);
             reinforcedHit_Model(ctr) = prob_lick;
             
             %reinforced probability of licking, Foil tone
-            prob_lick = (1 + exp(-(foilE - c*foilI)./sig)).^(-1);
+            prob_lick = (1 + exp(-(foilE - foilI)./sig)).^(-1);
             reinforcedFA_Model(ctr) = prob_lick;
             
             
@@ -222,11 +222,11 @@ for session = 1:courseness:max(reinforcedX)
     end
     
     %probe probability of licking, Target Tone
-    prob_lick = (1 + exp(-(targetE - targetI)./sig)).^(-1);
+    prob_lick = (1 + exp(-(targetE - c*targetI)./sig)).^(-1);
     probeHit_Model(ctr) = prob_lick;
     
     %probe probability of licking, Foil Tone
-    prob_lick = (1 + exp(-(foilE - foilI)./sig)).^(-1);
+    prob_lick = (1 + exp(-(foilE - c*foilI)./sig)).^(-1);
     probeFA_Model(ctr) = prob_lick;
 
 %% Update synaptic weights for the XX previous trials
